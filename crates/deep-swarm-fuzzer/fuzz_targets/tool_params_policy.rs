@@ -20,16 +20,12 @@ struct PolicyInput {
 
 fuzz_target!(|data: &[u8]| {
     let data = bounded_bytes(data);
-    if json_depth_within(data) {
-        if let Ok(value) = serde_json::from_slice::<Value>(data) {
-            if value_within_limits(&value, 0) {
+    if json_depth_within(data) && let Ok(value) = serde_json::from_slice::<Value>(data) && value_within_limits(&value, 0) {
                 let first = invoke("diagnostics", value.clone(), false);
                 let second = invoke("diagnostics", value, false);
                 assert_eq!(first, second);
                 assert!(!matches!(first, ToolResult::Success { .. }));
             }
-        }
-    }
 
     let mut unstructured = Unstructured::new(data);
     let Ok(generated) = PolicyInput::arbitrary(&mut unstructured) else {
@@ -77,4 +73,5 @@ fn invoke(name: &str, params: Value, allowed: bool) -> ToolResult {
         .get_or_init(|| Runtime::new().expect("fuzz runtime"))
         .block_on(execute_tool(&mock_registry(), name, params, &context, None))
 }
+
 

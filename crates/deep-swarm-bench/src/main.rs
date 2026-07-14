@@ -1,4 +1,4 @@
-﻿use std::{
+use std::{
     env, fs,
     net::{SocketAddr, TcpListener as StdTcpListener, TcpStream},
     path::PathBuf,
@@ -164,5 +164,3 @@ fn optional_value<'a>(args: &'a [String], name: &str) -> Option<&'a str> {
 fn value<'a>(args: &'a [String], name: &str) -> Result<&'a str, Box<dyn std::error::Error>> {
     optional_value(args, name).ok_or_else(|| format!("missing {name}").into())
 }
-
-

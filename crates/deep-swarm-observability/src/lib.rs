@@ -1,8 +1,4 @@
-﻿use std::{
-    error::Error,
-    sync::OnceLock,
-    time::Duration,
-};
+use std::{error::Error, sync::OnceLock, time::Duration};
 
 use opentelemetry::{
     KeyValue,
@@ -138,14 +134,32 @@ mod tests {
         metrics.record_tool_call("run_shell", false, Duration::from_millis(8));
 
         let active = metrics.prometheus_text().unwrap();
-        assert!(active.contains("deepswarm_agents_active"), "missing agents_active metric");
-        assert!(active.contains("deepswarm_tool_calls_total"), "missing tool_calls metric");
-        assert!(active.contains(r#"outcome="success""#), "missing success outcome");
-        assert!(active.contains(r#"outcome="failure""#), "missing failure outcome");
-        assert!(active.contains("deepswarm_tool_call_duration_seconds_bucket"), "missing duration metric");
+        assert!(
+            active.contains("deepswarm_agents_active"),
+            "missing agents_active metric"
+        );
+        assert!(
+            active.contains("deepswarm_tool_calls_total"),
+            "missing tool_calls metric"
+        );
+        assert!(
+            active.contains(r#"outcome="success""#),
+            "missing success outcome"
+        );
+        assert!(
+            active.contains(r#"outcome="failure""#),
+            "missing failure outcome"
+        );
+        assert!(
+            active.contains("deepswarm_tool_call_duration_seconds_bucket"),
+            "missing duration metric"
+        );
 
         drop(guard);
         let after_drop = metrics.prometheus_text().unwrap();
-        assert!(after_drop.contains("deepswarm_agents_active"), "agents should still exist after drop");
+        assert!(
+            after_drop.contains("deepswarm_agents_active"),
+            "agents should still exist after drop"
+        );
     }
 }

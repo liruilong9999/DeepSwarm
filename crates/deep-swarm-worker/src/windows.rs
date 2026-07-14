@@ -1,4 +1,4 @@
-use std::{
+﻿use std::{
     ffi::OsStr,
     fs::File,
     io::{self, Read},
@@ -33,8 +33,8 @@ use windows_sys::Win32::{
             JOBOBJECT_EXTENDED_LIMIT_INFORMATION, JOBOBJECT_LIMIT_VIOLATION_INFORMATION_2,
             JobObjectBasicAccountingInformation, JobObjectBasicProcessIdList,
             JobObjectCpuRateControlInformation, JobObjectExtendedLimitInformation,
-            JobObjectLimitViolationInformation2, QueryInformationJobObject, SetInformationJobObject,
-            TerminateJobObject,
+            JobObjectLimitViolationInformation2, QueryInformationJobObject,
+            SetInformationJobObject, TerminateJobObject,
         },
         Pipes::CreatePipe,
         Threading::{
@@ -166,7 +166,7 @@ fn create_process(command: &CommandSpec, limits: &HardLimits) -> Result<WindowsP
         .as_ref()
         .map(|path| wide_null(path.as_os_str()));
     let current_dir_ptr = current_dir.as_ref().map_or(null(), |path| path.as_ptr());
-    let mut startup = STARTUPINFOW {
+    let startup = STARTUPINFOW {
         cb: size_of::<STARTUPINFOW>() as u32,
         dwFlags: STARTF_USESTDHANDLES,
         hStdInput: stdin.0,
@@ -187,7 +187,7 @@ fn create_process(command: &CommandSpec, limits: &HardLimits) -> Result<WindowsP
             CREATE_SUSPENDED | CREATE_UNICODE_ENVIRONMENT | CREATE_NO_WINDOW,
             environment.as_ptr().cast(),
             current_dir_ptr,
-            &mut startup,
+            &startup,
             &mut information,
         )
     };
@@ -761,3 +761,4 @@ mod tests {
         );
     }
 }
+

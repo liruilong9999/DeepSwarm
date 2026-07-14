@@ -307,7 +307,7 @@ pub async fn run_scenario(
     let burst = summarize(by_phase.get("burst").expect("burst phase"), config.burst);
     let completion_rate = ratio(terminal, planned);
     let error_rate = ratio(errors, planned);
-    let thresholds_met = environment.compliant.then(|| {
+    let thresholds_met = environment.compliant.then_some({
         steady.throughput_steps_per_sec >= 195.0
             && steady.latency_p95_ms <= 200.0
             && peak_rss <= 4 * 1024 * 1024 * 1024
