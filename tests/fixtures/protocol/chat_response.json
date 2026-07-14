@@ -1,0 +1,38 @@
+{
+  "id": "chatcmpl-contract",
+  "object": "chat.completion",
+  "created": 1720000000,
+  "model": "deepseek-v4-pro",
+  "system_fingerprint": "fp_contract",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "答案",
+        "reasoning_content": "先思考",
+        "tool_calls": [
+          {
+            "id": "call_1",
+            "type": "function",
+            "function": {
+              "name": "lookup",
+              "arguments": "{\"key\":\"value\"}"
+            }
+          }
+        ]
+      },
+      "finish_reason": "tool_calls"
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 10,
+    "completion_tokens": 8,
+    "total_tokens": 18,
+    "prompt_cache_hit_tokens": 4,
+    "prompt_cache_miss_tokens": 6,
+    "completion_tokens_details": {
+      "reasoning_tokens": 3
+    }
+  }
+}
