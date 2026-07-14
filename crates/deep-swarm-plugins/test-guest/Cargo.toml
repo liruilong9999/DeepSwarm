@@ -1,0 +1,14 @@
+[package]
+name = "deep-swarm-plugin-test-guest"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+wit-bindgen = "0.59.0"
+
+[workspace]
+
