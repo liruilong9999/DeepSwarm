@@ -283,6 +283,7 @@ mod tests {
             policy,
             deadline: tokio::time::Instant::now() + Duration::from_secs(1),
             cancellation: CancellationToken::new(),
+            max_output_bytes: 1024,
             secret_handles: Vec::new(),
         };
         let first = execute_tool(

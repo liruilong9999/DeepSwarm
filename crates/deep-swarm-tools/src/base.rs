@@ -48,6 +48,7 @@ pub struct ToolContext {
     pub policy: ToolPolicySnapshot,
     pub deadline: Instant,
     pub cancellation: CancellationToken,
+    pub max_output_bytes: usize,
     pub secret_handles: Vec<SecretHandle>,
 }
 

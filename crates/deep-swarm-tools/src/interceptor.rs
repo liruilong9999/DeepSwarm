@@ -54,7 +54,18 @@ pub async fn execute_tool(
             ToolResult::failure(ToolErrorCategory::Cancelled, "tool call was cancelled")
         }
         result = tokio::time::timeout_at(ctx.deadline, tool.execute(params, ctx)) => {
-            result.unwrap_or_else(|_| ToolResult::failure(ToolErrorCategory::Timeout, "tool deadline elapsed"))
+            match result {
+                Ok(ToolResult::Success { value, .. })
+                    if serde_json::to_vec(&value).map_or(true, |bytes| bytes.len() > ctx.max_output_bytes) =>
+                {
+                    ToolResult::failure(
+                        ToolErrorCategory::ResourceExhausted,
+                        format!("tool output exceeds {} bytes", ctx.max_output_bytes),
+                    )
+                }
+                Ok(result) => result,
+                Err(_) => ToolResult::failure(ToolErrorCategory::Timeout, "tool deadline elapsed"),
+            }
         }
     }
 }
@@ -79,6 +90,7 @@ mod tests {
             policy,
             deadline: tokio::time::Instant::now() + Duration::from_secs(1),
             cancellation: CancellationToken::new(),
+            max_output_bytes: 1024,
             secret_handles: Vec::new(),
         }
     }
@@ -116,6 +128,20 @@ mod tests {
             result,
             ToolResult::Failure {
                 category: ToolErrorCategory::Denied,
+                ..
+            }
+        ));
+    }
+
+    #[tokio::test]
+    async fn enforces_output_budget_in_one_place() {
+        let mut ctx = context(ToolPolicySnapshot::mock_only(["git_status"]));
+        ctx.max_output_bytes = 1;
+        let result = execute_tool(&mock_registry(), "git_status", json!({}), &ctx, None).await;
+        assert!(matches!(
+            result,
+            ToolResult::Failure {
+                category: ToolErrorCategory::ResourceExhausted,
                 ..
             }
         ));
