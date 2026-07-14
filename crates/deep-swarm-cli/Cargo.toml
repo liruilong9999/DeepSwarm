@@ -1,0 +1,29 @@
+[package]
+name = "deep-swarm-cli"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "deep-swarm"
+path = "src/main.rs"
+
+[dependencies]
+anyhow.workspace = true
+async-trait.workspace = true
+clap.workspace = true
+deep-swarm-core = { path = "../deep-swarm-core" }
+deep-swarm-mock-server = { path = "../deep-swarm-mock-server" }
+deep-swarm-tools = { path = "../deep-swarm-tools" }
+serde_json.workspace = true
+serde_yaml.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[lints]
+workspace = true
