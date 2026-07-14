@@ -12,6 +12,7 @@ use tokio::{
     time::Instant,
 };
 use tokio_util::sync::CancellationToken;
+use tracing::Instrument as _;
 
 use crate::{
     AgentError, AgentState, CompletionEvent, Lifecycle, MAX_CANCELLATION_GRACE,
@@ -375,14 +376,17 @@ fn spawn_agent(
         in_flight: Arc::new(AtomicBool::new(false)),
         schedulable: Arc::new(AtomicBool::new(false)),
     };
-    tokio::spawn(run_agent(
-        id,
-        rx,
-        session_cancellation.clone(),
-        spec,
-        completions,
-        handle.schedulable.clone(),
-    ));
+    tokio::spawn(
+        run_agent(
+            id,
+            rx,
+            session_cancellation.clone(),
+            spec,
+            completions,
+            handle.schedulable.clone(),
+        )
+        .instrument(deep_swarm_observability::agent_span(session_id, id)),
+    );
     handle
 }
 
@@ -394,6 +398,7 @@ async fn run_agent(
     completions: broadcast::Sender<CompletionEvent>,
     schedulable: Arc<AtomicBool>,
 ) {
+    let _active_agent = deep_swarm_observability::global().agent_guard();
     let mut lifecycle = Lifecycle::default();
     let mut cancellation_handled = false;
     loop {

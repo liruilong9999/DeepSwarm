@@ -1,5 +1,5 @@
 [package]
-name = "deep-swarm-agent"
+name = "deep-swarm-observability"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -7,11 +7,12 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
-deep-swarm-observability = { path = "../deep-swarm-observability" }
-thiserror.workspace = true
-tokio.workspace = true
-tokio-util.workspace = true
+opentelemetry.workspace = true
+opentelemetry-prometheus.workspace = true
+opentelemetry_sdk.workspace = true
+prometheus.workspace = true
 tracing.workspace = true
+tracing-subscriber.workspace = true
 
 [lints]
 workspace = true

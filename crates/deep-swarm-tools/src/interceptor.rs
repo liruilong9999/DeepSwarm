@@ -1,4 +1,5 @@
 use serde_json::Value;
+use tracing::Instrument as _;
 
 use crate::{RunToolRegistry, ToolContext, ToolErrorCategory, ToolResult};
 
@@ -8,6 +9,32 @@ pub struct FaultInjection {
 }
 
 pub async fn execute_tool(
+    registry: &RunToolRegistry,
+    name: &str,
+    params: Value,
+    ctx: &ToolContext,
+    fault: Option<&FaultInjection>,
+) -> ToolResult {
+    let started = std::time::Instant::now();
+    let result = execute_tool_inner(registry, name, params, ctx, fault)
+        .instrument(deep_swarm_observability::tool_span(
+            &ctx.run_id,
+            &ctx.session_id,
+            &ctx.agent_id,
+            &ctx.call_id,
+            &ctx.call_id,
+            name,
+        ))
+        .await;
+    deep_swarm_observability::global().record_tool_call(
+        name,
+        matches!(result, ToolResult::Success { .. }),
+        started.elapsed(),
+    );
+    result
+}
+
+async fn execute_tool_inner(
     registry: &RunToolRegistry,
     name: &str,
     params: Value,
