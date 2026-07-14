@@ -1,0 +1,11 @@
+protocol: deepseek-1.0.0+2026-07-13
+base_url: https://api.deepseek.com
+beta_base_url: https://api.deepseek.com/beta
+request_timeout_seconds: 120
+max_attempts: 3
+mailbox_capacity: 64
+max_in_flight_steps: 200
+cancellation_grace_ms: 5000
+report_directory: reports
+retention_days: 7
+
