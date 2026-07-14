@@ -6,6 +6,7 @@ use std::{
     time::Duration,
 };
 
+use regex::Regex;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
@@ -52,10 +53,9 @@ impl PluginManifest {
 }
 
 pub fn wit_sha256() -> String {
-    format!(
-        "{:x}",
-        Sha256::digest(include_bytes!("../wit/plugin-v1.wit"))
-    )
+    let normalized =
+        String::from_utf8_lossy(include_bytes!("../wit/plugin-v1.wit")).replace("\r\n", "\n");
+    format!("{:x}", Sha256::digest(normalized.as_bytes()))
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -262,17 +262,20 @@ fn validate_payload(value: &str) -> Result<(), PluginError> {
 }
 
 fn redact_and_truncate(value: &str, max_bytes: usize) -> String {
-    let redacted = value
-        .split_whitespace()
-        .map(|part| {
-            if part.starts_with("sk-") {
-                "[REDACTED]"
-            } else {
-                part
-            }
+    static DEEPSEEK_KEY: std::sync::OnceLock<Regex> = std::sync::OnceLock::new();
+    static PRIVATE_KEY: std::sync::OnceLock<Regex> = std::sync::OnceLock::new();
+    let redacted = DEEPSEEK_KEY
+        .get_or_init(|| {
+            Regex::new(r"(?i)sk-[a-z0-9_-]+").expect("static DeepSeek key pattern is valid")
         })
-        .collect::<Vec<_>>()
-        .join(" ");
+        .replace_all(value, "[REDACTED]");
+    let redacted = PRIVATE_KEY
+        .get_or_init(|| {
+            Regex::new(r"(?s)-----BEGIN [^-]*PRIVATE KEY-----.*?-----END [^-]*PRIVATE KEY-----")
+                .expect("static private key pattern is valid")
+        })
+        .replace_all(&redacted, "[REDACTED]")
+        .into_owned();
     if redacted.len() <= max_bytes {
         return redacted;
     }
@@ -320,7 +323,17 @@ mod tests {
             validate_payload(&"x".repeat(MAX_PAYLOAD_BYTES + 1)),
             Err(PluginError::PayloadTooLarge)
         ));
-        assert_eq!(redact_and_truncate("key sk-secret", 100), "key [REDACTED]");
+        assert_eq!(
+            redact_and_truncate("Authorization=Bearer sk-secret", 100),
+            "Authorization=Bearer [REDACTED]"
+        );
+        assert_eq!(
+            redact_and_truncate(
+                "-----BEGIN PRIVATE KEY-----\nsecret\n-----END PRIVATE KEY-----",
+                100,
+            ),
+            "[REDACTED]"
+        );
     }
 
     #[test]
