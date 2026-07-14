@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://deepswarm.local/schemas/report-v1.schema.json",
+  "title": "DeepSwarm Report v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "run_id", "status", "created_at", "summary", "cases", "uncertain_operations"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "run_id": { "type": "string", "minLength": 1 },
+    "status": { "enum": ["succeeded", "failed", "cancelled"] },
+    "created_at": { "type": "string", "format": "date-time" },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["planned", "completed", "passed", "failed", "skipped"],
+      "properties": {
+        "planned": { "type": "integer", "minimum": 0 },
+        "completed": { "type": "integer", "minimum": 0 },
+        "passed": { "type": "integer", "minimum": 0 },
+        "failed": { "type": "integer", "minimum": 0 },
+        "skipped": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "cases": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "status", "steps"],
+        "properties": {
+          "id": { "type": "string" },
+          "status": { "enum": ["passed", "failed", "skipped", "cancelled"] },
+          "steps": { "type": "array", "items": { "type": "object" } },
+          "error": { "type": ["object", "null"] }
+        }
+      }
+    },
+    "metrics": { "type": "object" },
+    "recording_hash": { "type": ["string", "null"] },
+    "uncertain_operations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["call_id", "tool", "target", "started_at", "cancelled_at", "reason", "closed"],
+        "properties": {
+          "call_id": { "type": "string" },
+          "tool": { "type": "string" },
+          "target": { "type": "string" },
+          "started_at": { "type": "string", "format": "date-time" },
+          "cancelled_at": { "type": "string", "format": "date-time" },
+          "reason": { "type": "string" },
+          "closed": { "type": "boolean" }
+        }
+      }
+    }
+  }
+}
+

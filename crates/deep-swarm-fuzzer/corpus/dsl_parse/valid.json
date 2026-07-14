@@ -1,0 +1,1 @@
+{"version":1,"variables":{},"data_sources":[],"suites":[{"name":"corpus","variables":{},"load":null,"assertions":[],"cases":[{"name":"case","variables":{},"for_each":null,"weight":1,"repeat":1,"steps":[{"id":"step","name":null,"variables":{},"repeat":1,"when":true,"tool":"diagnostics","with":{},"capture":{},"assertions":[]}]}]}]}

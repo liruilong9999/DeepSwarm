@@ -1,0 +1,29 @@
+package deepswarm:plugin@1.0.0;
+
+interface host {
+    log: func(level: string, message: string);
+}
+
+interface plugin {
+    enum event-kind {
+        session-start,
+        tool-call,
+        assertion-fail,
+        session-end,
+    }
+
+    record event {
+        kind: event-kind,
+        payload-json: string,
+    }
+
+    init: func(config-json: string) -> result<string, string>;
+    on-event: func(value: event) -> result<string, string>;
+    shutdown: func() -> result<string, string>;
+}
+
+world plugin-world {
+    import host;
+    export plugin;
+}
+

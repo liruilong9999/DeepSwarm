@@ -1,0 +1,28 @@
+[package]
+name = "deep-swarm-distributed"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+deep-swarm-core = { path = "../deep-swarm-core" }
+prost.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+tonic.workspace = true
+tonic-prost.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+tokio-stream = { version = "0.1", features = ["net"] }
+
+[build-dependencies]
+prost-build = "0.14.4"
+protoc-bin-vendored = "3"
+tonic-prost-build = "0.14.6"
+
+[lints]
+workspace = true
+

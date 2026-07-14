@@ -1,0 +1,46 @@
+[package]
+name = "deep-swarm-fuzzer"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+arbitrary = { version = "1", features = ["derive"] }
+deep-swarm-client = { path = "../deep-swarm-client" }
+deep-swarm-core = { path = "../deep-swarm-core" }
+deep-swarm-tools = { path = "../deep-swarm-tools" }
+libfuzzer-sys = "0.4"
+serde_json.workspace = true
+tempfile.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
+
+[[bin]]
+name = "dsl_parse"
+path = "fuzz_targets/dsl_parse.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "deepseek_sse_parse"
+path = "fuzz_targets/deepseek_sse_parse.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "tool_params_policy"
+path = "fuzz_targets/tool_params_policy.rs"
+test = false
+doc = false
+bench = false
+
+[lints]
+workspace = true

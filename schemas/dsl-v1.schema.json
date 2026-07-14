@@ -1,0 +1,197 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://deepswarm.local/schemas/dsl-v1.schema.json",
+  "title": "DeepSwarm DSL v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "suites"],
+  "properties": {
+    "version": { "const": 1 },
+    "variables": { "$ref": "#/$defs/variables" },
+    "data_sources": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/data_source" }
+    },
+    "suites": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/suite" }
+    }
+  },
+  "$defs": {
+    "variables": {
+      "type": "object",
+      "propertyNames": {
+        "not": { "enum": ["data", "steps", "runtime"] }
+      }
+    },
+    "data_source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "format", "path"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*$" },
+        "format": { "enum": ["csv", "jsonl"] },
+        "path": { "type": "string", "minLength": 1 }
+      }
+    },
+    "suite": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "cases"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "variables": { "$ref": "#/$defs/variables" },
+        "load": { "$ref": "#/$defs/load" },
+        "assertions": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/assertion" }
+        },
+        "cases": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/case" }
+        }
+      }
+    },
+    "load": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["phases"],
+      "properties": {
+        "phases": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "duration_seconds", "start_rate", "target_rate"],
+            "properties": {
+              "name": { "type": "string", "minLength": 1 },
+              "duration_seconds": { "type": "integer", "minimum": 1 },
+              "start_rate": { "type": "number", "minimum": 0 },
+              "target_rate": { "type": "number", "minimum": 0 }
+            }
+          }
+        }
+      }
+    },
+    "case": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "steps"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "variables": { "$ref": "#/$defs/variables" },
+        "for_each": { "type": "string", "minLength": 1 },
+        "weight": { "type": "number", "exclusiveMinimum": 0 },
+        "repeat": { "type": "integer", "minimum": 0, "maximum": 1000 },
+        "steps": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/step" }
+        }
+      }
+    },
+    "step": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "tool", "with"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*$" },
+        "name": { "type": "string" },
+        "variables": { "$ref": "#/$defs/variables" },
+        "repeat": { "type": "integer", "minimum": 0, "maximum": 1000 },
+        "when": {
+          "oneOf": [
+            { "type": "boolean" },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["op", "left", "right"],
+              "properties": {
+                "op": { "enum": ["eq", "ne", "lt", "lte", "gt", "gte", "contains"] },
+                "left": {},
+                "right": {}
+              }
+            }
+          ]
+        },
+        "tool": { "type": "string", "minLength": 1 },
+        "with": { "type": "object" },
+        "capture": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        },
+        "assertions": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/assertion" }
+        }
+      }
+    },
+    "assertion": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["id", "type", "actual"],
+          "properties": {
+            "id": { "type": "string", "minLength": 1 },
+            "type": { "const": "exists" },
+            "actual": {}
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["id", "type", "actual", "schema"],
+          "properties": {
+            "id": { "type": "string", "minLength": 1 },
+            "type": { "const": "json_schema" },
+            "actual": {},
+            "schema": { "type": "object" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["id", "type", "actual", "expected"],
+          "properties": {
+            "id": { "type": "string", "minLength": 1 },
+            "type": { "enum": ["contains", "regex"] },
+            "actual": {},
+            "expected": {}
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["id", "type", "actual", "expected", "evaluator", "min"],
+          "properties": {
+            "id": { "type": "string", "minLength": 1 },
+            "type": { "const": "similarity" },
+            "actual": {},
+            "expected": {},
+            "evaluator": { "type": "string", "pattern": "^.+@.+$" },
+            "min": { "type": "number", "minimum": 0, "maximum": 1 }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["id", "type", "phase", "metric", "aggregate", "op", "value", "min_samples"],
+          "properties": {
+            "id": { "type": "string", "minLength": 1 },
+            "type": { "const": "metric" },
+            "phase": { "type": "string", "minLength": 1 },
+            "metric": { "enum": ["latency_ms", "throughput_steps_per_sec", "error_rate", "completion_rate", "rss_bytes"] },
+            "aggregate": { "enum": ["p95", "rate", "max"] },
+            "op": { "enum": ["lt", "lte", "gt", "gte"] },
+            "value": { "type": "number" },
+            "min_samples": { "type": "integer", "minimum": 1 }
+          }
+        }
+      ]
+    }
+  }
+}
+

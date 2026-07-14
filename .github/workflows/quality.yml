@@ -1,0 +1,174 @@
+name: quality
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "17 18 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.96.0
+          components: rustfmt, clippy
+          targets: wasm32-unknown-unknown
+      - run: cargo +1.96.0 fmt --all -- --check
+      - run: cargo +1.96.0 clippy --workspace --all-targets -- -D warnings
+      - run: cargo +1.96.0 test --workspace
+
+  fuzz-pr:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [dsl_parse, deepseek_sse_parse, tool_params_policy]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.96.0
+          targets: wasm32-unknown-unknown
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          toolchain: nightly-2026-07-14
+      - run: cargo +1.96.0 install cargo-fuzz --locked
+      - name: 固定 10000 次变异
+        shell: bash
+        run: |
+          set -o pipefail
+          mkdir -p fuzz-artifacts/raw
+          cargo +nightly-2026-07-14 fuzz run \
+            --manifest-path crates/deep-swarm-fuzzer/Cargo.toml \
+            "${{ matrix.target }}" -- \
+            -runs=10000 -max_len=65536 -timeout=5 -rss_limit_mb=4096 \
+            -artifact_prefix=fuzz-artifacts/raw/ 2>&1 | tee fuzz.log
+      - name: 生成脱敏失败制品
+        if: failure()
+        shell: bash
+        run: |
+          mkdir -p fuzz-artifacts/sanitized
+          raw="$(find fuzz-artifacts/raw -type f | head -n 1)"
+          if [ -n "$raw" ]; then
+            cargo +nightly-2026-07-14 fuzz tmin \
+              --manifest-path crates/deep-swarm-fuzzer/Cargo.toml \
+              "${{ matrix.target }}" "$raw" -- -max_total_time=60 || true
+            minimal="$(find fuzz-artifacts crates/deep-swarm-fuzzer/artifacts -type f 2>/dev/null | sort | head -n 1)"
+            hash="$(sha256sum "$minimal" | cut -d' ' -f1)"
+            seed="$(sed -n 's/.*seed=\([0-9]*\).*/\1/p' fuzz.log | tail -n 1)"
+            {
+              echo "target=${{ matrix.target }}"
+              echo "seed=${seed:-unknown}"
+              echo "sha256=$hash"
+              echo "cargo_fuzz=$(cargo +1.96.0 fuzz --version 2>/dev/null || true)"
+              echo -n "minimal_input_hex="
+              od -An -tx1 -v "$minimal" | tr -d ' \n'
+              echo
+            } > fuzz-artifacts/sanitized/failure.txt
+          fi
+          rm -rf fuzz-artifacts/raw crates/deep-swarm-fuzzer/artifacts
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: fuzz-pr-${{ matrix.target }}
+          path: fuzz-artifacts/sanitized
+          retention-days: 7
+          if-no-files-found: ignore
+
+  fuzz-nightly:
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [dsl_parse, deepseek_sse_parse, tool_params_policy]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.96.0
+          targets: wasm32-unknown-unknown
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          toolchain: nightly-2026-07-14
+      - run: cargo +1.96.0 install cargo-fuzz --locked
+      - name: 每目标运行 10 分钟
+        shell: bash
+        run: |
+          set -o pipefail
+          mkdir -p fuzz-artifacts/raw
+          cargo +nightly-2026-07-14 fuzz run \
+            --manifest-path crates/deep-swarm-fuzzer/Cargo.toml \
+            "${{ matrix.target }}" -- \
+            -max_total_time=600 -max_len=65536 -timeout=5 -rss_limit_mb=4096 \
+            -artifact_prefix=fuzz-artifacts/raw/ 2>&1 | tee fuzz.log
+      - name: 生成脱敏失败制品
+        if: failure()
+        shell: bash
+        run: |
+          mkdir -p fuzz-artifacts/sanitized
+          raw="$(find fuzz-artifacts/raw -type f | head -n 1)"
+          if [ -n "$raw" ]; then
+            cargo +nightly-2026-07-14 fuzz tmin \
+              --manifest-path crates/deep-swarm-fuzzer/Cargo.toml \
+              "${{ matrix.target }}" "$raw" -- -max_total_time=60 || true
+            minimal="$(find fuzz-artifacts crates/deep-swarm-fuzzer/artifacts -type f 2>/dev/null | sort | head -n 1)"
+            hash="$(sha256sum "$minimal" | cut -d' ' -f1)"
+            seed="$(sed -n 's/.*seed=\([0-9]*\).*/\1/p' fuzz.log | tail -n 1)"
+            {
+              echo "target=${{ matrix.target }}"
+              echo "seed=${seed:-unknown}"
+              echo "sha256=$hash"
+              echo "cargo_fuzz=$(cargo +1.96.0 fuzz --version 2>/dev/null || true)"
+              echo -n "minimal_input_hex="
+              od -An -tx1 -v "$minimal" | tr -d ' \n'
+              echo
+            } > fuzz-artifacts/sanitized/failure.txt
+          fi
+          rm -rf fuzz-artifacts/raw crates/deep-swarm-fuzzer/artifacts
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: fuzz-nightly-${{ matrix.target }}
+          path: fuzz-artifacts/sanitized
+          retention-days: 7
+          if-no-files-found: ignore
+
+  performance:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: [self-hosted, linux, x64, deepswarm-perf-exclusive]
+    timeout-minutes: 120
+    env:
+      DEEP_SWARM_PERF_RUNNER: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.96.0
+          components: rustfmt, clippy
+          targets: wasm32-unknown-unknown
+      - run: mkdir -p quality-artifacts
+      - name: 运行完整 release 性能门禁
+        run: >-
+          cargo +1.96.0 run --release -p deep-swarm-bench --
+          --scenario all --output quality-artifacts/performance.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: performance-report
+          path: quality-artifacts/performance.json
+          retention-days: 7
+          if-no-files-found: error

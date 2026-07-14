@@ -1,0 +1,6 @@
+/target/
+/crates/deep-swarm-plugins/test-guest/target/
+/reports/
+/recordings/
+/.worktrees/
+*.profraw
