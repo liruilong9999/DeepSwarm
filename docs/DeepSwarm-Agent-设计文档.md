@@ -5,6 +5,9 @@
 本文定义一个面向 DeepSwarm 的 Agent(智能体) 实现方案，范围只覆盖：
 
 - 只接入 DeepSeek(深度求索) 模型，不做多模型路由
+- DeepSeek 接入以 [DeepSeekAPI完整开发手册-官方文档只读.md](D:/code/git_code/ai/DeepSwarm/DeepSwarm_main/docs/DeepSeekAPI完整开发手册-官方文档只读.md) 的官方稳定调用规范为准
+- 每次模型请求发送前必须先计算 token(令牌) 数量
+- 代码实现语言固定为 Rust(编程语言)
 - 支持命令行界面与桌面界面两种交互形态
 - 支持项目下多会话
 - 支持单会话多智能体协作
@@ -17,6 +20,7 @@
 - 不设计分布式集群版调度
 - 不设计插件市场或复杂扩展框架
 - 不把 GitHub、网页、自动化做成独立子平台
+- 不接入 DeepSeek Beta(测试版) 地址、Anthropic(人机对话接口) 兼容接口、Prefix(前缀续写) 和 FIM(中间填充) 补全
 
 结论先行：首版最合适的形态不是“每个前端自己跑一套 Agent”，而是一个本地后台服务 `deepswarmd` 作为唯一运行时，CLI(命令行界面) 与桌面界面都只做客户端。
 
@@ -52,6 +56,9 @@
 4. 单会话多智能体通过“计划拆分 + 补丁合并”实现，不让多个智能体直接同时写主工作目录。
 5. DeepSeek 接入只做一个 `DeepSeekGateway`，统一处理流式输出、函数调用、重试、限流、计费与熔断。
 6. 持久化优先使用 SQLite(轻量数据库) + 文件存储，不引入额外基础设施。
+7. DeepSeek 只走官方稳定 OpenAI(开放人工智能) 兼容接口 `https://api.deepseek.com`，不依赖 `/beta` 或兼容层。
+8. 每次请求前必须先用本地分词器预估输入 token，再决定是否压缩上下文或下调输出预算。
+9. 全部工程代码用 Rust 编写，命名遵循主流 Rust 约定。
 
 ## 4. 总体架构
 
@@ -67,6 +74,7 @@ flowchart TB
         SM[会话管理器]
         ORCH[会话编排器]
         ARM[统一智能体运行时]
+        PRE[请求预检器]
         TQ[任务与队列调度器]
         CM[上下文管理器]
         APP[审批中心]
@@ -78,6 +86,7 @@ flowchart TB
 
     subgraph 外部依赖
         DS[DeepSeek 网关]
+        TK[DeepSeek 分词器资源]
         FS[工作区文件系统]
         DB[SQLite 存储]
         WEB[网页与 GitHub 外部能力]
@@ -89,12 +98,14 @@ flowchart TB
     SM --> ORCH
     ORCH --> TQ
     TQ --> ARM
+    ARM --> PRE
+    PRE --> TK
+    PRE --> DS
     ARM --> CM
     ARM --> TOOL
     ARM --> APP
     TOOL --> FS
     TOOL --> WEB
-    ARM --> DS
     SM --> DB
     ORCH --> DB
     TOOL --> DB
@@ -282,13 +293,20 @@ flowchart LR
 - 文件写入并发
 - 审批等待中的前端连接数
 
+其中 DeepSeek 官方当前账号并发上限为：
+
+- `deepseek-v4-flash`：2500
+- `deepseek-v4-pro`：500
+
+因此 3000 会话设计不能等价理解为 3000 条同时活跃模型流。
+
 ### 8.2 并发分层
 
 | 层级 | 数量目标 | 说明 |
 |---|---|---|
 | 常驻会话对象 | 3000 | 轻量状态机，常驻内存或热缓存 |
 | 热会话 | 100 到 300 | 最近活跃、有流式输出或工具执行 |
-| 活跃模型流 | 64 到 256 | 由 DeepSeek 配额与延迟动态控制 |
+| 活跃模型流 | 64 到 256 | 默认低于官方并发上限，按模型类型分开限流 |
 | 活跃工具进程 | 64 到 128 | 受 CPU、磁盘、系统进程数限制 |
 | 单会话活跃智能体 | 1 到 8 | 受会话级配额限制 |
 
@@ -326,49 +344,125 @@ flowchart LR
 
 ### 9.1 单供应商适配层
 
-所有模型调用统一走 `DeepSeekGateway`，其职责只有 6 件事：
+所有模型调用统一走 `DeepSeekGateway`，其职责只有 7 件事：
 
 1. 读取 `DEEPSEEK_API_KEY`
-2. 维护 HTTP 长连接与流式解析
-3. 统一模型请求格式
-4. 处理工具调用协议
-5. 记录 token、耗时、错误率
-6. 处理重试、限流和熔断
+2. 固定使用官方稳定基础地址 `https://api.deepseek.com`
+3. 维护 HTTP 长连接与流式解析
+4. 统一模型请求格式
+5. 处理工具调用协议
+6. 记录 token、耗时、错误率、缓存命中
+7. 处理重试、限流和熔断
+
+首版只接 3 个稳定接口：
+
+| 方法 | 路径 | 用途 |
+|---|---|---|
+| `POST` | `/chat/completions` | 对话、流式输出、思考模式、JSON 输出、工具调用 |
+| `GET` | `/models` | 启动时校验官方可用模型 |
+| `GET` | `/user/balance` | 启动自检与余额告警 |
+
+以下官方文档中的能力明确不进入首版实现：
+
+- `/beta` 地址下的 strict(严格模式)
+- Prefix(前缀续写)
+- FIM(中间填充) 补全
+- Anthropic 兼容接口
 
 ### 9.2 模型配置方式
 
-虽然只接 DeepSeek，仍建议保留 profile(配置档) 概念，但 profile 只映射到 DeepSeek 体系内的模型参数：
+官方当前稳定模型以 `deepseek-v4-flash` 和 `deepseek-v4-pro` 为主。首版建议：
+
+- 默认模型：`deepseek-v4-flash`
+- 会话级可选覆盖：`deepseek-v4-pro`
+- 不再使用 `deepseek-chat` 和 `deepseek-reasoner`，因为官方文档已标注将于 2026-07-24 23:59 弃用
+- 不做后台自动跨模型路由，避免策略复杂化
+
+保留 profile(配置档) 概念，但 profile 只表示同一官方接口上的参数组合，不代表额外的供应商抽象：
 
 | Profile | 用途 | 典型参数 |
 |---|---|---|
-| `interactive` | 正常对话与轻任务 | 中等 `max_tokens`、较低 `temperature` |
-| `planner` | 任务拆分与复杂规划 | 更高上下文预算 |
-| `review` | 补丁审查与风险判断 | 更低温度、更短输出 |
-| `summary` | 历史压缩与摘要 | 更低成本、更短输出 |
+| `interactive` | 正常对话与轻任务 | 默认开启思考模式，`reasoning_effort=high` |
+| `planner` | 任务拆分与复杂规划 | 思考模式，必要时 `reasoning_effort=max` |
+| `review` | 补丁审查与风险判断 | 思考模式，较短输出 |
+| `summary` | 历史压缩与摘要 | 可关闭思考模式，压低输出长度 |
 
 这样上层只感知“场景”，不感知具体模型细节。
 
-### 9.3 请求生命周期
+补充约束：
+
+- 官方当前模型默认开启思考模式
+- 思考模式下 `temperature` 和 `top_p` 实际不生效
+- 因此首版不把采样参数作为主要调优手段，优先调 `reasoning_effort`、上下文和 `max_tokens`
+
+### 9.3 请求前 token 预计算
+
+每次调用 `/chat/completions` 之前，必须先经过 `RequestPreflight`：
+
+1. 从 `docs/refrence/deepseek_v3_tokenizer/deepseek_v3_tokenizer` 加载 `tokenizer.json` 与 `tokenizer_config.json`
+2. 使用 `tokenizer_config.json` 中的 `chat_template` 把当前 `messages` 渲染成真正要发给模型的提示文本
+3. 对渲染后的文本做分词编码，得到 `estimated_prompt_tokens`
+4. 根据模型配置预留 `reserved_completion_tokens`
+5. 检查 `estimated_prompt_tokens + reserved_completion_tokens` 是否超出当前模型上下文预算
+6. 如果超出，则先触发上下文压缩、摘要替换或下调输出预算，之后重新计算
+7. 只有预算通过后，才真正发起 HTTP 请求
+
+实现约束：
+
+- 生产代码直接使用 Rust 读取分词器资源，不依赖 `deepseek_tokenizer.py`
+- `deepseek_tokenizer.py` 只作为参考验证脚本，不进入运行时主链路
+- 预估结果用于请求准入、上下文裁剪、排队和成本预警
+- 最终计费与真实 token 数以 DeepSeek 响应 `usage` 为准
+
+额外注意：
+
+- 参考分词器目录名是 `deepseek_v3_tokenizer`，而首版接入模型是 `deepseek-v4-flash` 与 `deepseek-v4-pro`
+- 因此这里把本地分词器视为“预估器”，并保留后续替换资源文件的能力
+- `tokenizer_config.json` 里的 `model_max_length=16384` 不能直接当作线上硬上限
+- 真正的上下文上限必须来自 DeepSeek 模型配置和官方文档，当前按 1M token 设计
+
+### 9.4 请求生命周期
 
 ```text
 AgentRuntime
   -> 构造 Prompt(提示词) 与工具定义
+  -> 生成合规 user_id(仅字母数字、横线、下划线)
+  -> 调用 RequestPreflight 计算 estimated_prompt_tokens
+  -> 若预算不足则先压缩上下文再重新计算
   -> 向 DeepSeekGateway 申请并发槽位
   -> 发起流式请求
-  -> 持续接收文本块或工具调用块
+  -> 忽略空行和 : keep-alive 保活注释
+  -> 持续接收 reasoning_content、content 或 tool_calls 增量
   -> 若触发工具，则暂停模型流并执行工具
+  -> 回传 role=tool 的工具结果
   -> 将工具结果回灌模型继续
-  -> 结束后写入 token 计量与审计日志
+  -> 结束后写入 token、缓存命中、模型名与审计日志
 ```
 
-### 9.4 错误处理
+多轮对话必须严格遵循官方无状态规则：每次请求都回传完整 `messages`。如果当前轮包含工具调用，则必须把上一轮 `assistant` 完整消息对象回传，不能丢 `reasoning_content`，否则会触发 HTTP 400。
+
+### 9.5 错误处理
 
 | 错误类型 | 处理策略 |
 |---|---|
+| 400/422 参数错误 | 立即停止重试，记录原始请求并回退到保守参数 |
+| 401 认证错误 | 立即停止请求并提示检查 `DEEPSEEK_API_KEY` |
+| 402 余额不足 | 立即停止新任务并触发余额告警 |
 | 429 限流 | 指数退避，降低全局活跃模型流 |
 | 网络超时 | 快速重试 1 次，失败则排队重试 |
 | 响应格式异常 | 记录原始片段，回退到保守解析 |
+| 500/503 临时故障 | 有限次数退避重试 |
 | 连续失败 | 打开熔断，短时间拒绝新请求并提示排队 |
+
+### 9.6 工具调用与 JSON 输出约束
+
+基于官方文档，首版实现要额外遵守以下规则：
+
+1. 工具参数必须先做本地 JSON 与 Schema 校验，不能直接信任模型输出。
+2. `tool` 消息必须带 `tool_call_id` 回传。
+3. JSON 输出模式必须显式设置 `response_format={"type":"json_object"}`。
+4. JSON 输出提示词中必须出现 `json` 字样，并给出预期结构示例。
+5. JSON 输出偶发空 `content` 时，只做有限次重试，不做无限兜底。
 
 ## 10. 工具系统设计
 
@@ -591,15 +685,24 @@ CLI 不负责保存业务状态，状态一律在后台服务。
 [runtime]
 max_sessions = 3000
 max_hot_sessions = 300
-max_active_model_streams = 128
+max_active_model_streams_flash = 256
+max_active_model_streams_pro = 64
 max_active_tool_processes = 96
 max_agents_per_session = 6
 foreground_boost = true
 
 [deepseek]
 api_key_env = "DEEPSEEK_API_KEY"
+base_url = "https://api.deepseek.com"
+default_model = "deepseek-v4-flash"
+context_window_tokens_flash = 1000000
+context_window_tokens_pro = 1000000
 request_timeout_secs = 90
 max_retry = 2
+
+[tokenizer]
+dir = "docs/refrence/deepseek_v3_tokenizer/deepseek_v3_tokenizer"
+estimate_before_every_request = true
 
 [context]
 summary_threshold = 0.85
@@ -616,13 +719,60 @@ hard_trim_threshold = 0.95
 - 大网页抓取结果分块存储
 - 历史工具结果默认只加载摘要
 
-## 16. 最小可行实施顺序
+## 16. Rust 实现与命名规范
+
+### 16.1 语言与工程组织
+
+- 运行时、CLI(命令行界面)、桌面端后端适配层统一使用 Rust 实现
+- 工程组织采用 Cargo Workspace(Cargo 工作区)
+- 分层保持轻量，优先按职责拆 crate(包) 与模块，不做未来导向的大而全抽象
+
+建议的 crate 命名示例：
+
+- `deep-swarm-app`
+- `deep-swarm-runtime`
+- `deep-swarm-deepseek`
+- `deep-swarm-storage`
+- `deep-swarm-tools`
+- `deep-swarm-tokenizer`
+
+### 16.2 主流 Rust 命名约定
+
+| 对象 | 命名方式 | 示例 |
+|---|---|---|
+| crate(包) 名 | kebab-case(短横线小写) | `deep-swarm-runtime` |
+| 模块、文件、函数、字段、局部变量 | snake_case(下划线小写) | `request_preflight`、`count_tokens_for_request` |
+| 结构体、枚举、Trait(特征)、枚举变体 | UpperCamelCase(大驼峰) | `DeepSeekGateway`、`TokenCounter` |
+| 常量、静态变量 | SCREAMING_SNAKE_CASE(全大写下划线) | `DEFAULT_MAX_RETRY` |
+| 缩写词 | 按普通单词处理 | `ApiClient`、`HttpServer`，不用 `APIClient` |
+
+补充要求：
+
+- 对外 JSON 字段如果必须保持官方命名，使用 `serde` 映射，内部 Rust 字段仍保持 snake_case
+- Trait(特征) 名优先表达能力，如 `TokenCounter`、`ToolExecutor`，避免无意义的 `Helper`、`Util`
+- 异步函数名用动词短语，如 `send_chat_request`、`load_tokenizer_assets`
+
+### 16.3 分词与网关命名建议
+
+围绕这次需求，首版建议至少保留以下 Rust 类型或模块名：
+
+- `deepseek_gateway.rs`
+- `request_preflight.rs`
+- `token_counter.rs`
+- `context_budget.rs`
+- `session_store.rs`
+- `tool_executor.rs`
+
+这样既贴合职责，也符合 Rust 社区常见命名方式。
+
+## 17. 最小可行实施顺序
 
 ### Phase 1：单后台服务闭环
 
 - 实现 `deepswarmd`
 - 打通项目、会话、消息存储
 - 接入 DeepSeek 流式对话
+- 接入本地分词器预计算链路
 - CLI 接到后台服务
 
 ### Phase 2：工具、审批与恢复
@@ -645,7 +795,7 @@ hard_trim_threshold = 0.95
 - 接入 DeepSeek 并发控制与熔断
 - 压测并校正阈值
 
-## 17. 风险与对应策略
+## 18. 风险与对应策略
 
 | 风险 | 说明 | 策略 |
 |---|---|---|
@@ -654,8 +804,9 @@ hard_trim_threshold = 0.95
 | 会话上下文膨胀 | 长对话与长工具输出迅速吃满上下文 | 四段式预算压缩 |
 | Shell 任务失控 | 长任务卡住或输出过大 | 分块输出、超时、取消信号 |
 | 状态散落前端 | CLI 和桌面端状态不一致 | 一律由后台服务持久化 |
+| 分词器与线上模型漂移 | 本地预估 token 与官方实际 usage 存在偏差 | 预估只做准入，计费以 `usage` 为准，并保留替换分词器资源能力 |
 
-## 18. 最终建议
+## 19. 最终建议
 
 首版最值得坚持的约束只有三条：
 
