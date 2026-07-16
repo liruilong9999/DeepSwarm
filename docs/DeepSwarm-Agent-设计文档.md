@@ -496,9 +496,9 @@ Phase 4 使用模拟 DeepSeek 网关和模拟工具先验证控制面，不把�
 
 每次调用 `/chat/completions` 之前，必须先经过 `RequestPreflight`：
 
-1. 从 `docs/refrence/deepseek_v3_tokenizer/deepseek_v3_tokenizer` 加载 `tokenizer.json` 与 `tokenizer_config.json`
-2. 使用 `tokenizer_config.json` 中的 `chat_template` 把当前 `messages` 渲染成真正要发给模型的提示文本
-3. 对渲染后的文本做分词编码，得到 `estimated_prompt_tokens`
+1. 从 `docs/refrence/deepseek_v3_tokenizer/deepseek_v3_tokenizer` 加载本地分词器资源
+2. `AgentRuntime` 按正常请求流程拼装系统提示词、历史消息、当前用户输入、工具定义和工具结果等输入文本
+3. 对每段实际参与本次请求的文本执行与 Python 示例 `tokenizer.encode(text)` 等价的 Rust 编码，汇总返回的 token ID 数量，得到 `estimated_prompt_tokens`
 4. 根据模型配置预留 `reserved_completion_tokens`
 5. 检查 `estimated_prompt_tokens + reserved_completion_tokens` 是否超出当前模型上下文预算
 6. 如果超出，则先触发上下文压缩、摘要替换或下调输出预算，之后重新计算
@@ -507,7 +507,8 @@ Phase 4 使用模拟 DeepSeek 网关和模拟工具先验证控制面，不把�
 实现约束：
 
 - 生产代码直接使用 Rust 读取分词器资源，不依赖 `deepseek_tokenizer.py`
-- `deepseek_tokenizer.py` 只作为参考验证脚本，不进入运行时主链路
+- Rust 实现只需复现 `tokenizer.encode(text)` 后统计 token ID 数量的行为，不解析或执行 `tokenizer_config.json` 中的 `chat_template`
+- `deepseek_tokenizer.py` 只作为编码结果的参考验证脚本，不进入运行时主链路
 - 预估结果用于请求准入、上下文裁剪、排队和成本预警
 - 最终计费与真实 token 数以 DeepSeek 响应 `usage` 为准
 
