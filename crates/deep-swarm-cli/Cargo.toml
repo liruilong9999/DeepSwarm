@@ -1,0 +1,14 @@
+[package]
+name = "deep-swarm-cli"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[[bin]]
+name = "deep-swarm-cli"
+path = "src/main.rs"
+
+[dependencies]
+deep-swarm-daemon-api = { path = "../deep-swarm-daemon-api" }
+

@@ -1,0 +1,19 @@
+[workspace]
+members = [
+    "crates/deep-swarm-daemon-api",
+    "crates/deep-swarm-daemon",
+    "crates/deep-swarm-cli",
+    "crates/deep-swarm-runtime",
+    "crates/deep-swarm-deepseek",
+    "crates/deep-swarm-storage",
+    "crates/deep-swarm-tools",
+    "crates/deep-swarm-tokenizer",
+]
+resolver = "3"
+
+[workspace.package]
+edition = "2024"
+version = "0.1.0"
+license = "MIT"
+authors = ["DeepSwarm"]
+

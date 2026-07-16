@@ -1,0 +1,16 @@
+[package]
+name = "deep-swarm-runtime"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+deep-swarm-deepseek = { path = "../deep-swarm-deepseek" }
+deep-swarm-storage = { path = "../deep-swarm-storage" }
+deep-swarm-tools = { path = "../deep-swarm-tools" }
+deep-swarm-tokenizer = { path = "../deep-swarm-tokenizer" }
+

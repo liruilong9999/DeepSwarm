@@ -79,13 +79,13 @@ git diff --check
 
 ### TASK-001：建立 Rust 工作区
 
-- [ ] 状态：未开始
+- [x] 状态：已完成
 - 依赖：无
 - 目标：创建最小可编译 Cargo Workspace，包括 `deep-swarm-daemon-api`、`deep-swarm-daemon`、`deep-swarm-cli`、`deep-swarm-runtime`、`deep-swarm-deepseek`、`deep-swarm-storage`、`deep-swarm-tools`、`deep-swarm-tokenizer`。
 - 允许修改：根目录 Cargo 配置、`.gitignore`、上述 crate(包) 的 Cargo 配置和最小入口文件。
 - 禁止：业务逻辑、占位 Trait、桌面 crate、构建脚本、未使用依赖。
 - 验收：`cargo metadata --no-deps`、`cargo check --workspace --all-targets`、`cargo fmt --all -- --check`。
-- 完成记录：待填写。
+- 完成记录：2026-07-16，建立了根工作区 `Cargo.toml`、`.gitignore` 与 `crates/` 下 8 个最小 crate 骨架；显式保持 `deep-swarm-cli -> deep-swarm-daemon-api`、`deep-swarm-daemon -> deep-swarm-runtime`、`deep-swarm-runtime -> deep-swarm-deepseek/storage/tools/tokenizer` 的最小依赖方向，并把守护进程二进制名设为 `deepswarmd`。已通过 `cargo metadata --no-deps`、`cargo metadata --no-deps --format-version 1`、`cargo check --workspace --all-targets`、`cargo fmt --all -- --check`、`cargo clippy --workspace --all-targets --all-features -- -D warnings`、`cargo test --workspace --all-features`、`git diff --check`。
 
 ### TASK-002：定义共享协议与状态机
 
